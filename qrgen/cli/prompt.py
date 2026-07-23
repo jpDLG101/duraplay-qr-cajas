@@ -10,13 +10,16 @@ def run() -> None:
     identifiers = parse(text)
     idents, dup  = deduplicate(identifiers)
     
-    print(f"{idents}")
+    input_path = input("Carpeta destino [output]: ").strip()
+    folder = Path(input_path) if input_path else Path("output")
+    folder.mkdir(parents=True, exist_ok=True)
     
+    print(f"{idents}")
     
     errors:int = 0
     for ident in idents:
         try:
-            export(generate(ident), ident, Path("output"))
+            export(generate(ident), ident, folder)
             
         except Exception as e:
             errors += 1
