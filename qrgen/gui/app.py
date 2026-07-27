@@ -6,7 +6,7 @@ from qrgen.core.parser import parse
 from qrgen.core.deduplicator import deduplicate
 from qrgen.core.generator import generate
 from qrgen.core.exporter import export
-from qrgen.io.csv_reader import read_csv
+from qrgen.io.csv_reader import read_csv, read_headers
 
 
 def run() -> None:
@@ -38,9 +38,10 @@ def run() -> None:
 
     csv_column_label = tk.Label(root, text="Columna:")
     csv_column_label.grid(row=4, column=0, padx=10, pady=5, sticky="w")
-    csv_column_entry = tk.Entry(root, width=40)
-    csv_column_entry.grid(row=4, column=1, padx=10, pady=5)
-
+    csv_column_var = tk.StringVar(value="Selecciona columna")
+    csv_column_menu = tk.OptionMenu(root, csv_column_var, "Selecciona columna")
+    csv_column_menu.grid(row=4, column=1)
+    
     path_label = tk.Label(root, text="Carpeta destino:")
     path_label.grid(row=5, column=0, padx=10, pady=5, sticky="w")
     output_entry = tk.Entry(root, width=30)
@@ -58,7 +59,13 @@ def run() -> None:
         if file:
             csv_path_entry.delete(0, tk.END)
             csv_path_entry.insert(0, file)
-
+        
+        headers = read_headers(Path(file))
+        menu = csv_column_menu["menu"]
+        menu.delete(0, tk.END)
+        for col in headers:
+            menu.add_command(label=col, command=lambda c=col: csv_column_var.set(c))
+        
     def browse_output():
         folder = filedialog.askdirectory()
         if folder:
@@ -72,18 +79,18 @@ def run() -> None:
             csv_path_entry.grid_remove()
             btn_browse_csv.grid_remove()
             csv_column_label.grid_remove()
-            csv_column_entry.grid_remove()
+            csv_column_menu.grid_remove()
         else:
             text_input.grid_remove()
             csv_path_label.grid()
             csv_path_entry.grid()
             btn_browse_csv.grid()
             csv_column_label.grid()
-            csv_column_entry.grid()
+            csv_column_menu.grid()
 
     def on_generate():
         if source_var.get() == "csv":
-            identifiers = read_csv(Path(csv_path_entry.get()), csv_column_entry.get())
+            identifiers = read_csv(Path(csv_path_entry.get()), csv_column_var.get())
         else:
             identifiers = parse(text_input.get("1.0", tk.END))
 

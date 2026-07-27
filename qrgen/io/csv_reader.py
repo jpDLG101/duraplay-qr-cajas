@@ -10,3 +10,8 @@ def read_csv(path: Path, column: str) -> list[str]:
             val = row.get(column)
             idents.append(val.strip())
     return idents
+
+def read_headers(path: Path) -> list[str]:
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        return reader.fieldnames
