@@ -13,3 +13,6 @@ wheels/
 output/
 test_data.csv
 test_data_cajas.csv
+
+# macOS junk
+.DS_Store
