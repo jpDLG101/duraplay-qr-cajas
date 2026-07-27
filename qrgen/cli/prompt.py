@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from qrgen.core.parser import parse
 from qrgen.core.deduplicator import deduplicate
 from qrgen.core.generator import generate

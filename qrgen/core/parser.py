@@ -1,7 +1,7 @@
 def parse(text: str) -> list[str]:
-    result = []
+    results = []
     for lineas in text.split("\n"):
         for linea in lineas.split(","):
-            result.append(linea.strip())
-        
-    return result
+            if linea.strip():
+                results.append(linea.strip())
+    return results
