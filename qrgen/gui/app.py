@@ -161,9 +161,10 @@ def run() -> None:
             csv_column_var.set(headers[0])
 
     def browse_csv():
-        file = filedialog.askopenfilename(
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
+        kwargs = {"filetypes": [("CSV files", "*.csv"), ("All files", "*.*")]}
+        if csv_path_var.get():
+            kwargs["initialdir"] = str(Path(csv_path_var.get()).parent)
+        file = filedialog.askopenfilename(**kwargs)
         if not file:
             return
         csv_path_var.set(file)
@@ -171,7 +172,10 @@ def run() -> None:
         load_csv_columns(file)
 
     def browse_output():
-        folder = filedialog.askdirectory()
+        kwargs = {}
+        if output_path_var.get():
+            kwargs["initialdir"] = output_path_var.get()
+        folder = filedialog.askdirectory(**kwargs)
         if folder:
             output_path_var.set(folder)
             output_entry.xview_moveto(1)

@@ -12,3 +12,4 @@ wheels/
 #test files
 output/
 test_data.csv
+test_data_cajas.csv
