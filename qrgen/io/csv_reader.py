@@ -8,7 +8,11 @@ def read_csv(path: Path, column: str) -> list[str]:
         idents = []
         for row in reader:
             val = row.get(column)
-            idents.append(val.strip())
+            if not val:
+                continue
+            val = val.strip()
+            if val:
+                idents.append(val)
     return idents
 
 def read_headers(path: Path) -> list[str]:
