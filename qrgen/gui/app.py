@@ -96,7 +96,12 @@ def run() -> None:
 
     base_path = Path(__file__).parent.parent.parent
 
-    if not getattr(sys, "frozen", False):
+    #en macOS el .app empaquetado ya trae su propio icono nativo (.icns) via
+    #el bundle, y iconphoto() lo pisa con una version peor; en Windows, en
+    #cambio, Tk no usa el icono embebido del .exe para la ventana/barra de
+    #tareas por su cuenta, asi que ahi iconphoto() hace falta siempre.
+    skip_iconphoto = sys.platform == "darwin" and getattr(sys, "frozen", False)
+    if not skip_iconphoto:
         try:
             icon_images = _load_icon_images(base_path)
             root.iconphoto(True, *icon_images)
