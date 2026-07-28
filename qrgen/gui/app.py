@@ -58,17 +58,11 @@ def _open_folder(path: Path) -> None:
 
 
 def _load_icon_images(base_path: Path) -> list[tk.PhotoImage]:
-    #iconbitmap con .ico en Windows solo toma un tamaño y Windows lo estira
-    #(se ve borroso en la barra de tareas); iconphoto con varios tamaños deja
-    #que cada contexto (titlebar, taskbar, alt-tab) use el tamaño exacto
     icon_dir = base_path / "assets" / ICON_DIR_NAME
     return [tk.PhotoImage(file=str(icon_dir / name)) for name in ICON_FILENAMES]
 
 
 def _theme_colors(dark_mode: bool) -> dict:
-    #sv_ttk solo pinta widgets ttk; estos valores vienen de su propia paleta
-    #(sv_ttk/theme/{light,dark}.tcl) para que los widgets tk planos (Text,
-    #OptionMenu) combinen con el resto en vez de quedar con colores por defecto
     return {
         "bg": "#1c1c1c" if dark_mode else "#fafafa",
         "fg": "#fafafa" if dark_mode else "#1c1c1c",

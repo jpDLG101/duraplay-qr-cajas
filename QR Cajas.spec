@@ -1,5 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+
+icon_file = 'assets/icon.ico' if sys.platform == 'win32' else 'assets/icon.icns'
 
 a = Analysis(
     ['main.py'],
@@ -32,7 +35,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/icon.icns'],
+    icon=[icon_file],
 )
 coll = COLLECT(
     exe,
