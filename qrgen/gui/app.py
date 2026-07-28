@@ -21,8 +21,13 @@ MAX_ERRORS_SHOWN = 10
 PROGRESS_UPDATE_STRIDE = 5
 
 ICON_DIR_NAME = "icon.iconset"
-ICON_FILENAMES = ("icon_16x16.png", "icon_32x32.png", "icon_32x32@2x.png", "icon_128x128.png", "icon_256x256.png")
-
+ICON_FILENAMES = (
+    "icon_16x16.png", "icon_16x16@2x.png",
+    "icon_32x32.png", "icon_32x32@2x.png",
+    "icon_128x128.png", "icon_128x128@2x.png",
+    "icon_256x256.png", "icon_256x256@2x.png",
+    "icon_512x512.png", "icon_512x512@2x.png",
+)
 
 def _is_dark_mode() -> bool:
     try:
@@ -91,12 +96,13 @@ def run() -> None:
 
     base_path = Path(__file__).parent.parent.parent
 
-    try:
-        icon_images = _load_icon_images(base_path)
-        root.iconphoto(True, *icon_images)
-        root._icon_images = icon_images
-    except Exception:
-        pass
+    if not getattr(sys, "frozen", False):
+        try:
+            icon_images = _load_icon_images(base_path)
+            root.iconphoto(True, *icon_images)
+            root._icon_images = icon_images
+        except Exception:
+            pass
 
     dark_mode = _is_dark_mode()
     sv_ttk.set_theme("dark" if dark_mode else "light")
