@@ -3,6 +3,8 @@ import subprocess
 import sys
 import tkinter as tk
 
+import sv_ttk
+
 from PIL import Image, ImageTk
 from pathlib import Path
 from tkinter import ttk, messagebox, filedialog
@@ -11,6 +13,15 @@ from qrgen.core.deduplicator import deduplicate
 from qrgen.core.generator import generate
 from qrgen.core.exporter import export
 from qrgen.io.csv_reader import read_csv, read_headers
+
+WINDOW_MIN_WIDTH = 680
+LOGO_HEIGHT_PX = 52
+NO_COLUMN = "Selecciona columna"
+MAX_ERRORS_SHOWN = 10
+PROGRESS_UPDATE_STRIDE = 5
+
+ICON_DIR_NAME = "icon.iconset"
+ICON_FILENAMES = ("icon_16x16.png", "icon_32x32.png", "icon_32x32@2x.png", "icon_128x128.png", "icon_256x256.png")
 
 
 def _is_dark_mode() -> bool:
@@ -46,23 +57,62 @@ def _open_folder(path: Path) -> None:
         pass
 
 
+def _load_icon_images(base_path: Path) -> list[tk.PhotoImage]:
+    #iconbitmap con .ico en Windows solo toma un tamaño y Windows lo estira
+    #(se ve borroso en la barra de tareas); iconphoto con varios tamaños deja
+    #que cada contexto (titlebar, taskbar, alt-tab) use el tamaño exacto
+    icon_dir = base_path / "assets" / ICON_DIR_NAME
+    return [tk.PhotoImage(file=str(icon_dir / name)) for name in ICON_FILENAMES]
+
+
+def _theme_colors(dark_mode: bool) -> dict:
+    #sv_ttk solo pinta widgets ttk; estos valores vienen de su propia paleta
+    #(sv_ttk/theme/{light,dark}.tcl) para que los widgets tk planos (Text,
+    #OptionMenu) combinen con el resto en vez de quedar con colores por defecto
+    return {
+        "bg": "#1c1c1c" if dark_mode else "#fafafa",
+        "fg": "#fafafa" if dark_mode else "#1c1c1c",
+        "field_bg": "#292929" if dark_mode else "#fdfdfd",
+        "muted_fg": "#595959" if dark_mode else "#a0a0a0",
+        "select_bg": "#2f60d8",
+        "select_fg": "#ffffff",
+    }
+
+
+def _load_logo(base_path: Path, dark_mode: bool) -> ImageTk.PhotoImage:
+    logo_filename = "logotipo-hdr@3x_darkmode.png" if dark_mode else "logotipo-hdr@3x.png"
+    logo_img = Image.open(base_path / "assets" / logo_filename).convert("RGBA")
+    ratio = LOGO_HEIGHT_PX / logo_img.height
+    logo_img = logo_img.resize((int(logo_img.width * ratio), LOGO_HEIGHT_PX))
+    return ImageTk.PhotoImage(logo_img)
+
+
 def run() -> None:
     #window
     root = tk.Tk()
     root.title("Duraplay QR Cajas")
-    root.minsize(680, 0)
+    root.minsize(WINDOW_MIN_WIDTH, 0)
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)
 
     base_path = Path(__file__).parent.parent.parent
-    logo_filename = "logotipo-hdr@3x_darkmode.png" if _is_dark_mode() else "logotipo-hdr@3x.png"
-    logo_img = Image.open(base_path / "assets" / logo_filename).convert("RGBA")
-    ratio = 52 / logo_img.height
-    logo_img = logo_img.resize((int(logo_img.width * ratio), 52))
-    logo_photo = ImageTk.PhotoImage(logo_img)
+
+    try:
+        icon_images = _load_icon_images(base_path)
+        root.iconphoto(True, *icon_images)
+        root._icon_images = icon_images
+    except Exception:
+        pass
+
+    dark_mode = _is_dark_mode()
+    sv_ttk.set_theme("dark" if dark_mode else "light")
+    colors = _theme_colors(dark_mode)
+    root.configure(background=colors["bg"])
+
+    logo_photo = _load_logo(base_path, dark_mode)
 
     source_var = tk.StringVar(value="manual")
-    csv_column_var = tk.StringVar(value="Selecciona columna")
+    csv_column_var = tk.StringVar(value=NO_COLUMN)
     output_path_var = tk.StringVar(value="")
     status_var = tk.StringVar(value="")
 
@@ -79,7 +129,7 @@ def run() -> None:
     subtitle_label = ttk.Label(
         main,
         text="Generación de los códigos QR para las cajas de los camiones.",
-        foreground="#666",
+        foreground=colors["muted_fg"],
     )
     subtitle_label.grid(row=1, column=0, sticky="w", pady=(0, 12))
 
@@ -100,7 +150,14 @@ def run() -> None:
     ttk.Label(manual_frame, text="Un código de caja por línea (o separados por coma):").grid(
         row=0, column=0, sticky="w"
     )
-    text_input = tk.Text(manual_frame, height=6, wrap="word")
+    text_input = tk.Text(
+        manual_frame, height=6, wrap="word",
+        background=colors["field_bg"], foreground=colors["fg"],
+        insertbackground=colors["fg"],
+        selectbackground=colors["select_bg"], selectforeground=colors["select_fg"],
+        relief="flat", borderwidth=1,
+        highlightthickness=1, highlightbackground=colors["field_bg"], highlightcolor=colors["select_bg"],
+    )
     text_input.grid(row=1, column=0, sticky="ew", pady=(4, 0))
 
     csv_frame = ttk.Frame(ident_frame)
@@ -117,8 +174,17 @@ def run() -> None:
     btn_browse_csv.grid(row=0, column=2, pady=4)
 
     ttk.Label(csv_frame, text="Columna con el código:").grid(row=1, column=0, sticky="w", pady=4)
-    csv_column_menu = tk.OptionMenu(csv_frame, csv_column_var, "Selecciona columna")
+    csv_column_menu = tk.OptionMenu(csv_frame, csv_column_var, NO_COLUMN)
     csv_column_menu.grid(row=1, column=1, sticky="ew", padx=8, pady=4)
+    csv_column_menu.configure(
+        background=colors["field_bg"], foreground=colors["fg"],
+        activebackground=colors["select_bg"], activeforeground=colors["select_fg"],
+        relief="flat", borderwidth=1, highlightthickness=0,
+    )
+    csv_column_menu["menu"].configure(
+        background=colors["field_bg"], foreground=colors["fg"],
+        activebackground=colors["select_bg"], activeforeground=colors["select_fg"],
+    )
 
     #seccion: salida
     output_frame = ttk.LabelFrame(main, text="Carpeta de salida", padding=12)
@@ -136,7 +202,7 @@ def run() -> None:
     action_frame.grid(row=4, column=0, sticky="ew")
     action_frame.columnconfigure(0, weight=1)
 
-    status_label = ttk.Label(action_frame, textvariable=status_var, foreground="#666")
+    status_label = ttk.Label(action_frame, textvariable=status_var, foreground=colors["muted_fg"])
     status_label.grid(row=0, column=0, sticky="w")
 
     btn_generate = ttk.Button(action_frame, text="Generar QR", command=lambda: on_generate())
@@ -146,6 +212,7 @@ def run() -> None:
     progress.grid(row=5, column=0, sticky="ew", pady=(8, 0))
     progress.grid_remove()
 
+    #handlers
     def load_csv_columns(path_str):
         if not path_str:
             return
@@ -194,7 +261,7 @@ def run() -> None:
             return
 
         if source_var.get() == "csv":
-            if not csv_path_var.get() or csv_column_var.get() == "Selecciona columna":
+            if not csv_path_var.get() or csv_column_var.get() == NO_COLUMN:
                 messagebox.showwarning(
                     "Falta información", "Selecciona el archivo CSV y la columna con el código antes de generar."
                 )
@@ -231,7 +298,7 @@ def run() -> None:
                 error_messages.append(f"{ident}: {e}")
             progress.config(value=i)
             status_var.set(f"Generando {i}/{total}...")
-            if i % 5 == 0 or i == total:
+            if i % PROGRESS_UPDATE_STRIDE == 0 or i == total:
                 root.update_idletasks()
 
         btn_generate.config(state="normal", text="Generar QR")
@@ -245,10 +312,10 @@ def run() -> None:
             f"{len(error_messages)} errores"
         )
         if error_messages:
-            shown = error_messages[:10]
+            shown = error_messages[:MAX_ERRORS_SHOWN]
             report += "\n\n" + "\n".join(shown)
-            if len(error_messages) > 10:
-                report += f"\n... y {len(error_messages) - 10} más"
+            if len(error_messages) > MAX_ERRORS_SHOWN:
+                report += f"\n... y {len(error_messages) - MAX_ERRORS_SHOWN} más"
 
         if messagebox.askyesno("Reporte", report + "\n\n¿Abrir la carpeta con los QR generados?"):
             _open_folder(folder)
