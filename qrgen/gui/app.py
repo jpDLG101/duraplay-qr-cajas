@@ -94,6 +94,12 @@ def _theme_colors(dark_mode: bool) -> dict:
 def _load_logo(base_path: Path, dark_mode: bool) -> ImageTk.PhotoImage:
     logo_filename = "logotipo-hdr@3x_darkmode.png" if dark_mode else "logotipo-hdr@3x.png"
     logo_img = Image.open(base_path / "assets" / logo_filename).convert("RGBA")
+    #las dos variantes traen distinto margen transparente alrededor de la
+    #marca; se recorta al contenido real antes de escalar para que ambas
+    #terminen del mismo tamaño visual
+    bbox = logo_img.getbbox()
+    if bbox:
+        logo_img = logo_img.crop(bbox)
     ratio = LOGO_HEIGHT_PX / logo_img.height
     logo_img = logo_img.resize((int(logo_img.width * ratio), LOGO_HEIGHT_PX))
     return ImageTk.PhotoImage(logo_img)
@@ -119,7 +125,10 @@ def run() -> None:
             pass
 
     dark_mode = _is_dark_mode()
-    sv_ttk.set_theme("dark" if dark_mode else "light")
+    #lista de un elemento: las funciones internas no pueden reasignar
+    #variables del scope externo directamente, pero si pueden mutar una lista
+    current_theme = ["dark" if dark_mode else "light"]
+    sv_ttk.set_theme(current_theme[0])
     colors = _theme_colors(dark_mode)
     root.configure(background=colors["bg"])
 
@@ -177,9 +186,6 @@ def run() -> None:
     )
     text_input.grid(row=0, column=0, sticky="ew", padx=1, pady=1)
 
-    #sv_ttk dispara un cambio de apariencia diferido en macOS que resetea
-    #el color de los widgets tk clasicos justo despues de crearlos; hay que
-    #reaplicarlo una vez que el bucle de eventos ya proceso ese cambio
     def _reapply_text_input_colors():
         text_input_border.config(background=colors["border"])
         text_input.config(
@@ -188,7 +194,20 @@ def run() -> None:
             selectbackground=colors["select_bg"], selectforeground=colors["select_fg"],
         )
 
-    root.after_idle(_reapply_text_input_colors)
+    root.after(200, _reapply_text_input_colors)
+
+    def _poll_theme():
+        new_dark = _is_dark_mode()
+        new_theme = "dark" if new_dark else "light"
+        if new_theme != current_theme[0]:
+            sv_ttk.set_theme(new_theme)
+            current_theme[0] = new_theme
+            colors.update(_theme_colors(new_dark))
+            root.after(200, _reapply_text_input_colors)
+            new_logo = _load_logo(base_path, new_dark)
+            logo_label.config(image=new_logo)
+            logo_label.image = new_logo
+        root.after(1000, _poll_theme)
 
     csv_frame = ttk.Frame(ident_frame)
     csv_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -295,7 +314,7 @@ def run() -> None:
         else:
             csv_frame.grid()
             manual_frame.grid_remove()
-
+                    
     def on_generate():
         if not output_path_var.get():
             messagebox.showwarning("Falta información", "Selecciona la carpeta donde guardar los QR antes de generar.")
@@ -380,4 +399,9 @@ def run() -> None:
     #trace de la app
     source_var.trace_add("write", on_mode_change)
     on_mode_change()
+    root.after(2000, _poll_theme)
     root.mainloop()
+    
+    
+    
+    
