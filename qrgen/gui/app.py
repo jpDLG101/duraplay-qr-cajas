@@ -1,11 +1,6 @@
-import os
-import subprocess
 import sys
 import tkinter as tk
 
-import sv_ttk
-
-from PIL import Image, ImageTk
 from pathlib import Path
 from tkinter import ttk, messagebox, filedialog
 from qrgen.core.parser import parse
@@ -13,96 +8,13 @@ from qrgen.core.deduplicator import deduplicate
 from qrgen.core.generator import generate
 from qrgen.core.exporter import export
 from qrgen.io.csv_reader import read_csv, read_headers
+from qrgen.gui.os_utils import open_folder, reveal_file
+from qrgen.gui.theme import ThemeController, load_logo, load_icon_images
 
 WINDOW_MIN_WIDTH = 680
-LOGO_HEIGHT_PX = 52
 NO_COLUMN = "Selecciona columna"
 MAX_ERRORS_SHOWN = 10
 PROGRESS_UPDATE_STRIDE = 5
-
-ICON_DIR_NAME = "icon.iconset"
-ICON_FILENAMES = (
-    "icon_16x16.png", "icon_16x16@2x.png",
-    "icon_32x32.png", "icon_32x32@2x.png",
-    "icon_128x128.png", "icon_128x128@2x.png",
-    "icon_256x256.png", "icon_256x256@2x.png",
-    "icon_512x512.png", "icon_512x512@2x.png",
-)
-
-def _is_dark_mode() -> bool:
-    try:
-        if sys.platform == "darwin":
-            result = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True, text=True, timeout=2,
-            )
-            return "dark" in result.stdout.lower()
-        elif sys.platform == "win32":
-            import winreg
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            )
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            return value == 0
-    except Exception:
-        pass
-    return False
-
-
-def _open_folder(path: Path) -> None:
-    try:
-        if sys.platform == "darwin":
-            subprocess.run(["open", str(path)])
-        elif sys.platform == "win32":
-            os.startfile(str(path))
-        else:
-            subprocess.run(["xdg-open", str(path)])
-    except Exception:
-        pass
-
-
-def _reveal_file(path: Path) -> None:
-    try:
-        if sys.platform == "darwin":
-            subprocess.run(["open", "-R", str(path)])
-        elif sys.platform == "win32":
-            subprocess.run(["explorer", f"/select,{str(path)}"])
-        else:
-            _open_folder(path.parent)
-    except Exception:
-        pass
-
-
-def _load_icon_images(base_path: Path) -> list[tk.PhotoImage]:
-    icon_dir = base_path / "assets" / ICON_DIR_NAME
-    return [tk.PhotoImage(file=str(icon_dir / name)) for name in ICON_FILENAMES]
-
-
-def _theme_colors(dark_mode: bool) -> dict:
-    return {
-        "bg": "#1c1c1c" if dark_mode else "#fafafa",
-        "fg": "#fafafa" if dark_mode else "#1c1c1c",
-        "field_bg": "#292929" if dark_mode else "#fdfdfd",
-        "border": "#454545" if dark_mode else "#c6c6c6",
-        "muted_fg": "#595959" if dark_mode else "#a0a0a0",
-        "select_bg": "#2f60d8",
-        "select_fg": "#ffffff",
-    }
-
-
-def _load_logo(base_path: Path, dark_mode: bool) -> ImageTk.PhotoImage:
-    logo_filename = "logotipo-hdr@3x_darkmode.png" if dark_mode else "logotipo-hdr@3x.png"
-    logo_img = Image.open(base_path / "assets" / logo_filename).convert("RGBA")
-    #las dos variantes traen distinto margen transparente alrededor de la
-    #marca; se recorta al contenido real antes de escalar para que ambas
-    #terminen del mismo tamaño visual
-    bbox = logo_img.getbbox()
-    if bbox:
-        logo_img = logo_img.crop(bbox)
-    ratio = LOGO_HEIGHT_PX / logo_img.height
-    logo_img = logo_img.resize((int(logo_img.width * ratio), LOGO_HEIGHT_PX))
-    return ImageTk.PhotoImage(logo_img)
 
 
 def run() -> None:
@@ -118,21 +30,17 @@ def run() -> None:
     skip_iconphoto = sys.platform == "darwin" and getattr(sys, "frozen", False)
     if not skip_iconphoto:
         try:
-            icon_images = _load_icon_images(base_path)
+            icon_images = load_icon_images(base_path)
             root.iconphoto(True, *icon_images)
             root._icon_images = icon_images
         except Exception:
             pass
 
-    dark_mode = _is_dark_mode()
-    #lista de un elemento: las funciones internas no pueden reasignar
-    #variables del scope externo directamente, pero si pueden mutar una lista
-    current_theme = ["dark" if dark_mode else "light"]
-    sv_ttk.set_theme(current_theme[0])
-    colors = _theme_colors(dark_mode)
+    theme = ThemeController(root)
+    colors = theme.colors
     root.configure(background=colors["bg"])
 
-    logo_photo = _load_logo(base_path, dark_mode)
+    logo_photo = load_logo(base_path, theme.dark_mode)
 
     source_var = tk.StringVar(value="manual")
     csv_column_var = tk.StringVar(value=NO_COLUMN)
@@ -148,6 +56,13 @@ def run() -> None:
     logo_label = ttk.Label(main, image=logo_photo)
     logo_label.image = logo_photo
     logo_label.grid(row=0, column=0, sticky="w", pady=(0, 4))
+
+    def _update_logo():
+        new_logo = load_logo(base_path, theme.dark_mode)
+        logo_label.config(image=new_logo)
+        logo_label.image = new_logo
+
+    theme.on_change(_update_logo)
 
     subtitle_label = ttk.Label(
         main,
@@ -194,20 +109,7 @@ def run() -> None:
             selectbackground=colors["select_bg"], selectforeground=colors["select_fg"],
         )
 
-    root.after(200, _reapply_text_input_colors)
-
-    def _poll_theme():
-        new_dark = _is_dark_mode()
-        new_theme = "dark" if new_dark else "light"
-        if new_theme != current_theme[0]:
-            sv_ttk.set_theme(new_theme)
-            current_theme[0] = new_theme
-            colors.update(_theme_colors(new_dark))
-            root.after(200, _reapply_text_input_colors)
-            new_logo = _load_logo(base_path, new_dark)
-            logo_label.config(image=new_logo)
-            logo_label.image = new_logo
-        root.after(1000, _poll_theme)
+    theme.on_change(_reapply_text_input_colors)
 
     csv_frame = ttk.Frame(ident_frame)
     csv_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -314,7 +216,7 @@ def run() -> None:
         else:
             csv_frame.grid()
             manual_frame.grid_remove()
-                    
+
     def on_generate():
         if not output_path_var.get():
             messagebox.showwarning("Falta información", "Selecciona la carpeta donde guardar los QR antes de generar.")
@@ -353,7 +255,7 @@ def run() -> None:
         error_messages = []
         total = len(idents)
         generated_files: list[Path] = []
-        
+
         for i, ident in enumerate(idents, start=1):
             try:
                 generated_files.append(export(generate(ident), ident, folder))
@@ -378,17 +280,17 @@ def run() -> None:
             report += "\n\n" + "\n".join(shown)
             if len(error_messages) > MAX_ERRORS_SHOWN:
                 report += f"\n... y {len(error_messages) - MAX_ERRORS_SHOWN} más"
-        
+
         if len(generated_files) == 1:
             file = generated_files[0]
-            btn_open_file.config(command=lambda: _open_folder(file))
+            btn_open_file.config(command=lambda: open_folder(file))
             btn_open_file.grid(row=0, column=0, sticky="ew", padx=(0, 4))
-            btn_open_folder.config(command=lambda: _reveal_file(file), style="TButton")
+            btn_open_folder.config(command=lambda: reveal_file(file), style="TButton")
             btn_open_folder.grid(row=0, column=1, sticky="ew", padx=(4, 0))
             result_frame.grid()
         elif generated_files:
             btn_open_file.grid_remove()
-            btn_open_folder.config(command=lambda: _open_folder(folder), style="Accent.TButton")
+            btn_open_folder.config(command=lambda: open_folder(folder), style="Accent.TButton")
             btn_open_folder.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0)
             result_frame.grid()
         else:
@@ -399,9 +301,5 @@ def run() -> None:
     #trace de la app
     source_var.trace_add("write", on_mode_change)
     on_mode_change()
-    root.after(2000, _poll_theme)
+    theme.start_polling()
     root.mainloop()
-    
-    
-    
-    
