@@ -62,6 +62,44 @@ def _open_folder(path: Path) -> None:
         pass
 
 
+def _open_file(path:Path) -> None:
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", str(path)])
+        elif sys.platform == "win32":
+            os.startfile(str(path))
+        else:
+            subprocess.run(["xdg-open", str(path)])
+    except Exception:
+        pass
+
+
+def _ask_single_qr(root, file: Path) -> None:
+    dialog = tk.Toplevel(root)
+    dialog.title("QR generado")
+    dialog_label = ttk.Label(
+        dialog,
+        text=f"{file.name}"
+    )
+    dialog_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+    ttk.Button(dialog, text="Abrir imagen", command=lambda: _open_file(file)).grid(row=2, column=0, padx=10, pady=5)
+    ttk.Button(dialog, text="Abrir carpeta", command=lambda: _reveal_file(file)).grid(row=3, column=0, padx=10, pady=5)
+    ttk.Button(dialog, text="Cerrar", command=dialog.destroy).grid(row=4, column=0, padx=10, pady=5)
+    dialog.grab_set()
+
+
+def _reveal_file(path: Path) -> None:
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", "-R", str(path)])
+        elif sys.platform == "win32":
+            subprocess.run(["explorer", f"/select,{str(path)}"])
+        else:
+            _open_folder(path.parent)
+    except Exception:
+        pass
+    
+
 def _load_icon_images(base_path: Path) -> list[tk.PhotoImage]:
     icon_dir = base_path / "assets" / ICON_DIR_NAME
     return [tk.PhotoImage(file=str(icon_dir / name)) for name in ICON_FILENAMES]
@@ -296,9 +334,12 @@ def run() -> None:
 
         error_messages = []
         total = len(idents)
+        generated_files: list[Path] = []
+        
         for i, ident in enumerate(idents, start=1):
             try:
                 export(generate(ident), ident, folder)
+                generated_files.append(folder / f"{ident}.png")
             except Exception as e:
                 error_messages.append(f"{ident}: {e}")
             progress.config(value=i)
@@ -321,9 +362,12 @@ def run() -> None:
             report += "\n\n" + "\n".join(shown)
             if len(error_messages) > MAX_ERRORS_SHOWN:
                 report += f"\n... y {len(error_messages) - MAX_ERRORS_SHOWN} más"
-
-        if messagebox.askyesno("Reporte", report + "\n\n¿Abrir la carpeta con los QR generados?"):
-            _open_folder(folder)
+        
+        if len(generated_files) == 1: 
+            _ask_single_qr(root,generated_files[0])
+        else: 
+            if messagebox.askyesno("Reporte", report + "\n\n¿Abrir la carpeta con los QR generados?"):
+                _reveal_file(generated_files[0])
 
     #trace de la app
     source_var.trace_add("write", on_mode_change)
