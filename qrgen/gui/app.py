@@ -17,7 +17,6 @@ WINDOW_MIN_WIDTH = 680
 NO_COLUMN = "Selecciona columna"
 MAX_ERRORS_SHOWN = 10
 
-
 def run() -> None:
     #window
     root = tk.Tk()
@@ -84,7 +83,7 @@ def run() -> None:
     rb_csv.grid(row=0, column=1, sticky="w")
 
     manual_frame = ttk.Frame(ident_frame)
-    manual_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+    manual_frame.grid(row=1, column=0, columnspan=2, sticky="new", pady=(8, 0))
     manual_frame.columnconfigure(0, weight=1)
     ttk.Label(manual_frame, text="Un código de caja por línea (o separados por coma):").grid(
         row=0, column=0, sticky="w"
@@ -94,7 +93,7 @@ def run() -> None:
     text_input_border.columnconfigure(0, weight=1)
 
     text_input = tk.Text(
-        text_input_border, height=6, wrap="word",
+        text_input_border, height=4, wrap="word",
         background=colors["field_bg"], foreground=colors["fg"],
         insertbackground=colors["fg"],
         selectbackground=colors["select_bg"], selectforeground=colors["select_fg"],
@@ -113,7 +112,7 @@ def run() -> None:
     theme.on_change(_reapply_text_input_colors)
 
     csv_frame = ttk.Frame(ident_frame)
-    csv_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+    csv_frame.grid(row=1, column=0, columnspan=2, sticky="new", pady=(8, 0))
     csv_frame.columnconfigure(1, weight=1)
 
     ttk.Label(csv_frame, text="Archivo CSV (exportado de la base de datos):").grid(
@@ -128,6 +127,19 @@ def run() -> None:
     ttk.Label(csv_frame, text="Columna con el código:").grid(row=1, column=0, sticky="w", pady=4)
     csv_column_menu = ttk.Combobox(csv_frame, textvariable=csv_column_var, state="readonly")
     csv_column_menu.grid(row=1, column=1, sticky="ew", padx=8, pady=4)
+
+    ident_frame.update_idletasks()
+    shared_row_height = max(manual_frame.winfo_reqheight(), csv_frame.winfo_reqheight()) + 10
+    shared_row_width = max(manual_frame.winfo_reqwidth(), csv_frame.winfo_reqwidth())
+    ident_frame.grid_rowconfigure(1, minsize=shared_row_height)
+
+    width_spacer = tk.Frame(ident_frame, height=1, width=shared_row_width, background=colors["bg"])
+    width_spacer.grid(row=2, column=0, columnspan=2, sticky="ew")
+
+    def _reapply_width_spacer_color():
+        width_spacer.config(background=colors["bg"])
+
+    theme.on_change(_reapply_width_spacer_color)
 
     #seccion: salida
     output_frame = ttk.LabelFrame(main, text="Carpeta de salida", padding=12)
@@ -288,6 +300,7 @@ def run() -> None:
             else:
                 result_frame.grid_remove()
 
+            root.update_idletasks()
             messagebox.showinfo("Completado...", report)
 
         def poll_generation_queue():
@@ -320,9 +333,6 @@ def run() -> None:
     #trace de la app
     source_var.trace_add("write", on_mode_change)
     on_mode_change()
-
-    root.update_idletasks()
-    root.geometry(f"{root.winfo_reqwidth()}x{root.winfo_reqheight()}")
 
     theme.start_polling()
     root.mainloop()
