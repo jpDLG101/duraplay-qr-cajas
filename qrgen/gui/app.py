@@ -1,4 +1,6 @@
+import queue
 import sys
+import threading
 import tkinter as tk
 
 from pathlib import Path
@@ -14,7 +16,6 @@ from qrgen.gui.theme import ThemeController, load_logo, load_icon_images
 WINDOW_MIN_WIDTH = 680
 NO_COLUMN = "Selecciona columna"
 MAX_ERRORS_SHOWN = 10
-PROGRESS_UPDATE_STRIDE = 5
 
 
 def run() -> None:
@@ -125,17 +126,8 @@ def run() -> None:
     btn_browse_csv.grid(row=0, column=2, pady=4)
 
     ttk.Label(csv_frame, text="Columna con el código:").grid(row=1, column=0, sticky="w", pady=4)
-    csv_column_menu = tk.OptionMenu(csv_frame, csv_column_var, NO_COLUMN)
+    csv_column_menu = ttk.Combobox(csv_frame, textvariable=csv_column_var, state="readonly")
     csv_column_menu.grid(row=1, column=1, sticky="ew", padx=8, pady=4)
-    csv_column_menu.configure(
-        background=colors["field_bg"], foreground=colors["fg"],
-        activebackground=colors["select_bg"], activeforeground=colors["select_fg"],
-        relief="flat", borderwidth=1, highlightthickness=0,
-    )
-    csv_column_menu["menu"].configure(
-        background=colors["field_bg"], foreground=colors["fg"],
-        activebackground=colors["select_bg"], activeforeground=colors["select_fg"],
-    )
 
     #seccion: salida
     output_frame = ttk.LabelFrame(main, text="Carpeta de salida", padding=12)
@@ -182,10 +174,7 @@ def run() -> None:
             headers = read_headers(Path(path_str))
         except Exception:
             return
-        menu = csv_column_menu["menu"]
-        menu.delete(0, tk.END)
-        for col in headers:
-            menu.add_command(label=col, command=lambda c=col: csv_column_var.set(c))
+        csv_column_menu["values"] = headers
         if headers:
             csv_column_var.set(headers[0])
 
@@ -252,54 +241,88 @@ def run() -> None:
         progress.config(maximum=len(idents), value=0)
         root.update_idletasks()
 
-        error_messages = []
         total = len(idents)
-        generated_files: list[Path] = []
+        progress_queue: queue.Queue = queue.Queue()
 
-        for i, ident in enumerate(idents, start=1):
+        def worker():
+            generated_files: list[Path] = []
+            error_messages: list[str] = []
+            for i, ident in enumerate(idents, start=1):
+                try:
+                    generated_files.append(export(generate(ident), ident, folder))
+                except Exception as e:
+                    error_messages.append(f"{ident}: {e}")
+                progress_queue.put(("progress", i, total))
+            progress_queue.put(("done", generated_files, error_messages))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        def finish_generation(generated_files, error_messages):
+            btn_generate.config(state="normal", text="Generar QR")
+            status_var.set("Completado...")
+
+            report = (
+                f"{len(identifiers)} códigos recibidos\n"
+                f"{len(idents)} QR generados\n"
+                f"{dup} duplicados eliminados\n"
+                f"{len(error_messages)} errores"
+            )
+            if error_messages:
+                shown = error_messages[:MAX_ERRORS_SHOWN]
+                report += "\n\n" + "\n".join(shown)
+                if len(error_messages) > MAX_ERRORS_SHOWN:
+                    report += f"\n... y {len(error_messages) - MAX_ERRORS_SHOWN} más"
+
+            if len(generated_files) == 1:
+                file = generated_files[0]
+                btn_open_file.config(command=lambda: open_folder(file))
+                btn_open_file.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+                btn_open_folder.config(command=lambda: reveal_file(file), style="TButton")
+                btn_open_folder.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+                result_frame.grid()
+            elif generated_files:
+                btn_open_file.grid_remove()
+                btn_open_folder.config(command=lambda: open_folder(folder), style="Accent.TButton")
+                btn_open_folder.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0)
+                result_frame.grid()
+            else:
+                result_frame.grid_remove()
+
+            messagebox.showinfo("Completado...", report)
+
+        def poll_generation_queue():
+            latest_progress = None
+            done_message = None
             try:
-                generated_files.append(export(generate(ident), ident, folder))
-            except Exception as e:
-                error_messages.append(f"{ident}: {e}")
-            progress.config(value=i)
-            status_var.set(f"Generando {i}/{total}...")
-            if i % PROGRESS_UPDATE_STRIDE == 0 or i == total:
-                root.update_idletasks()
+                while True:
+                    message = progress_queue.get_nowait()
+                    if message[0] == "progress":
+                        latest_progress = message
+                    elif message[0] == "done":
+                        done_message = message
+            except queue.Empty:
+                pass
 
-        btn_generate.config(state="normal", text="Generar QR")
-        status_var.set("Completado...")
+            if latest_progress:
+                _, i, i_total = latest_progress
+                progress.config(value=i)
+                status_var.set(f"Generando {i}/{i_total}...")
 
-        report = (
-            f"{len(identifiers)} códigos recibidos\n"
-            f"{len(idents)} QR generados\n"
-            f"{dup} duplicados eliminados\n"
-            f"{len(error_messages)} errores"
-        )
-        if error_messages:
-            shown = error_messages[:MAX_ERRORS_SHOWN]
-            report += "\n\n" + "\n".join(shown)
-            if len(error_messages) > MAX_ERRORS_SHOWN:
-                report += f"\n... y {len(error_messages) - MAX_ERRORS_SHOWN} más"
+            if done_message:
+                _, generated_files, error_messages = done_message
+                finish_generation(generated_files, error_messages)
+                return
 
-        if len(generated_files) == 1:
-            file = generated_files[0]
-            btn_open_file.config(command=lambda: open_folder(file))
-            btn_open_file.grid(row=0, column=0, sticky="ew", padx=(0, 4))
-            btn_open_folder.config(command=lambda: reveal_file(file), style="TButton")
-            btn_open_folder.grid(row=0, column=1, sticky="ew", padx=(4, 0))
-            result_frame.grid()
-        elif generated_files:
-            btn_open_file.grid_remove()
-            btn_open_folder.config(command=lambda: open_folder(folder), style="Accent.TButton")
-            btn_open_folder.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0)
-            result_frame.grid()
-        else:
-            result_frame.grid_remove()
+            root.after(50, poll_generation_queue)
 
-        messagebox.showinfo("Completado...", report)
+        root.after(50, poll_generation_queue)
 
     #trace de la app
     source_var.trace_add("write", on_mode_change)
     on_mode_change()
+
+    root.update_idletasks()
+    root.geometry(f"{root.winfo_reqwidth()}x{root.winfo_reqheight()}")
+
     theme.start_polling()
     root.mainloop()

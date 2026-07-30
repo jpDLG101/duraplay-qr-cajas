@@ -3,7 +3,7 @@ import csv
 from pathlib import Path
 
 def read_csv(path: Path, column: str) -> list[str]:
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         idents = []
         for row in reader:
@@ -16,6 +16,6 @@ def read_csv(path: Path, column: str) -> list[str]:
     return idents
 
 def read_headers(path: Path) -> list[str]:
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         return reader.fieldnames
