@@ -62,32 +62,6 @@ def _open_folder(path: Path) -> None:
         pass
 
 
-def _open_file(path:Path) -> None:
-    try:
-        if sys.platform == "darwin":
-            subprocess.run(["open", str(path)])
-        elif sys.platform == "win32":
-            os.startfile(str(path))
-        else:
-            subprocess.run(["xdg-open", str(path)])
-    except Exception:
-        pass
-
-
-def _ask_single_qr(root, file: Path) -> None:
-    dialog = tk.Toplevel(root)
-    dialog.title("QR generado")
-    dialog_label = ttk.Label(
-        dialog,
-        text=f"{file.name}"
-    )
-    dialog_label.grid(row=0, column=0, padx=20, pady=(20, 10))
-    ttk.Button(dialog, text="Abrir imagen", command=lambda: _open_file(file)).grid(row=2, column=0, padx=10, pady=5)
-    ttk.Button(dialog, text="Abrir carpeta", command=lambda: _reveal_file(file)).grid(row=3, column=0, padx=10, pady=5)
-    ttk.Button(dialog, text="Cerrar", command=dialog.destroy).grid(row=4, column=0, padx=10, pady=5)
-    dialog.grab_set()
-
-
 def _reveal_file(path: Path) -> None:
     try:
         if sys.platform == "darwin":
@@ -98,7 +72,7 @@ def _reveal_file(path: Path) -> None:
             _open_folder(path.parent)
     except Exception:
         pass
-    
+
 
 def _load_icon_images(base_path: Path) -> list[tk.PhotoImage]:
     icon_dir = base_path / "assets" / ICON_DIR_NAME
@@ -110,6 +84,7 @@ def _theme_colors(dark_mode: bool) -> dict:
         "bg": "#1c1c1c" if dark_mode else "#fafafa",
         "fg": "#fafafa" if dark_mode else "#1c1c1c",
         "field_bg": "#292929" if dark_mode else "#fdfdfd",
+        "border": "#454545" if dark_mode else "#c6c6c6",
         "muted_fg": "#595959" if dark_mode else "#a0a0a0",
         "select_bg": "#2f60d8",
         "select_fg": "#ffffff",
@@ -134,10 +109,6 @@ def run() -> None:
 
     base_path = Path(__file__).parent.parent.parent
 
-    #en macOS el .app empaquetado ya trae su propio icono nativo (.icns) via
-    #el bundle, y iconphoto() lo pisa con una version peor; en Windows, en
-    #cambio, Tk no usa el icono embebido del .exe para la ventana/barra de
-    #tareas por su cuenta, asi que ahi iconphoto() hace falta siempre.
     skip_iconphoto = sys.platform == "darwin" and getattr(sys, "frozen", False)
     if not skip_iconphoto:
         try:
@@ -193,15 +164,31 @@ def run() -> None:
     ttk.Label(manual_frame, text="Un código de caja por línea (o separados por coma):").grid(
         row=0, column=0, sticky="w"
     )
+    text_input_border = tk.Frame(manual_frame, background=colors["border"])
+    text_input_border.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+    text_input_border.columnconfigure(0, weight=1)
+
     text_input = tk.Text(
-        manual_frame, height=6, wrap="word",
+        text_input_border, height=6, wrap="word",
         background=colors["field_bg"], foreground=colors["fg"],
         insertbackground=colors["fg"],
         selectbackground=colors["select_bg"], selectforeground=colors["select_fg"],
-        relief="flat", borderwidth=1,
-        highlightthickness=1, highlightbackground=colors["field_bg"], highlightcolor=colors["select_bg"],
+        relief="flat", borderwidth=0, highlightthickness=0,
     )
-    text_input.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+    text_input.grid(row=0, column=0, sticky="ew", padx=1, pady=1)
+
+    #sv_ttk dispara un cambio de apariencia diferido en macOS que resetea
+    #el color de los widgets tk clasicos justo despues de crearlos; hay que
+    #reaplicarlo una vez que el bucle de eventos ya proceso ese cambio
+    def _reapply_text_input_colors():
+        text_input_border.config(background=colors["border"])
+        text_input.config(
+            background=colors["field_bg"], foreground=colors["fg"],
+            insertbackground=colors["fg"],
+            selectbackground=colors["select_bg"], selectforeground=colors["select_fg"],
+        )
+
+    root.after_idle(_reapply_text_input_colors)
 
     csv_frame = ttk.Frame(ident_frame)
     csv_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -248,12 +235,23 @@ def run() -> None:
     status_label = ttk.Label(action_frame, textvariable=status_var, foreground=colors["muted_fg"])
     status_label.grid(row=0, column=0, sticky="w")
 
-    btn_generate = ttk.Button(action_frame, text="Generar QR", command=lambda: on_generate())
+    btn_generate = ttk.Button(action_frame, text="Generar QR", style="Accent.TButton", command=lambda: on_generate())
     btn_generate.grid(row=0, column=1, sticky="e")
 
     progress = ttk.Progressbar(main, orient="horizontal", mode="determinate")
     progress.grid(row=5, column=0, sticky="ew", pady=(8, 0))
     progress.grid_remove()
+
+    result_frame = ttk.Frame(main)
+    result_frame.grid(row=6, column=0, sticky="ew", pady=(8, 0))
+    result_frame.columnconfigure(0, weight=1)
+    result_frame.columnconfigure(1, weight=1)
+
+    btn_open_file = ttk.Button(result_frame, text="Abrir imagen", style="Accent.TButton")
+    btn_open_file.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+    btn_open_folder = ttk.Button(result_frame, text="Abrir carpeta")
+    btn_open_folder.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+    result_frame.grid_remove()
 
     #handlers
     def load_csv_columns(path_str):
@@ -328,6 +326,7 @@ def run() -> None:
         folder.mkdir(parents=True, exist_ok=True)
 
         btn_generate.config(state="disabled", text="Generando...")
+        result_frame.grid_remove()
         progress.grid()
         progress.config(maximum=len(idents), value=0)
         root.update_idletasks()
@@ -338,8 +337,7 @@ def run() -> None:
         
         for i, ident in enumerate(idents, start=1):
             try:
-                export(generate(ident), ident, folder)
-                generated_files.append(folder / f"{ident}.png")
+                generated_files.append(export(generate(ident), ident, folder))
             except Exception as e:
                 error_messages.append(f"{ident}: {e}")
             progress.config(value=i)
@@ -348,8 +346,7 @@ def run() -> None:
                 root.update_idletasks()
 
         btn_generate.config(state="normal", text="Generar QR")
-        progress.grid_remove()
-        status_var.set("")
+        status_var.set("Completado...")
 
         report = (
             f"{len(identifiers)} códigos recibidos\n"
@@ -363,11 +360,22 @@ def run() -> None:
             if len(error_messages) > MAX_ERRORS_SHOWN:
                 report += f"\n... y {len(error_messages) - MAX_ERRORS_SHOWN} más"
         
-        if len(generated_files) == 1: 
-            _ask_single_qr(root,generated_files[0])
-        else: 
-            if messagebox.askyesno("Reporte", report + "\n\n¿Abrir la carpeta con los QR generados?"):
-                _reveal_file(generated_files[0])
+        if len(generated_files) == 1:
+            file = generated_files[0]
+            btn_open_file.config(command=lambda: _open_folder(file))
+            btn_open_file.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+            btn_open_folder.config(command=lambda: _reveal_file(file), style="TButton")
+            btn_open_folder.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+            result_frame.grid()
+        elif generated_files:
+            btn_open_file.grid_remove()
+            btn_open_folder.config(command=lambda: _open_folder(folder), style="Accent.TButton")
+            btn_open_folder.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0)
+            result_frame.grid()
+        else:
+            result_frame.grid_remove()
+
+        messagebox.showinfo("Completado...", report)
 
     #trace de la app
     source_var.trace_add("write", on_mode_change)
